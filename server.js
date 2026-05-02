@@ -26,33 +26,42 @@ app.post("/pedido", (req, res) => {
   });
 });
 app.post("/criar-pix", async (req, res) => {
-  const { pedido_id, valor } = req.body;
+  const { pedido_id } = req.body;
 
-  // simulação (depois entra Cielo aqui)
+  // 🔎 Buscar pedido real
+  const { data: pedido, error } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", pedido_id)
+    .single();
+
+  if (error || !pedido) {
+    return res.status(404).json({ error: "Pedido não encontrado" });
+  }
+
+  // 🚫 Validar status
+  if (pedido.order_status !== "aguardando_pagamento") {
+    return res.status(400).json({
+      error: "Pedido não está disponível para pagamento"
+    });
+  }
+
+  // 💳 (ainda fake por enquanto)
   const pixFake = {
     qrCode: "00020101021226850014br.gov.bcb.pix...",
     copiaECola: "00020101021226850014br.gov.bcb.pix...",
     status: "PENDENTE"
   };
 
+  // 🔁 (opcional agora)
+  // você pode manter o status ou mudar pra "pagamento_em_processamento"
+
   res.json({
-    pedido_id,
-    valor,
+    pedido_id: pedido.id,
+    valor: pedido.valor,
+    status: pedido.order_status,
     pix: pixFake
   });
-});
-
-app.get("/teste-db", async (req, res) => {
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*")
-    .limit(1);
-
-  if (error) {
-    return res.status(500).json({ error });
-  }
-
-  res.json({ data });
 });
 app.listen(3000, () => {
   console.log("Servidor rodando na porta 3000");
