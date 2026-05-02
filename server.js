@@ -109,7 +109,7 @@ app.post("/webhook/cielo", async (req, res) => {
 
     // 🔐 SEGURANÇA
     const secret = req.headers["x-webhook-secret"];
-    if (secret !== process.env.WEBHOOK_SECRET) {
+    if (!secret || secret.trim() !== process.env.WEBHOOK_SECRET.trim()) {
       console.warn("🚫 Webhook não autorizado");
       return res.status(401).json({ error: "Não autorizado" });
     }
