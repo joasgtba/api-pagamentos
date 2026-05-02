@@ -1,6 +1,12 @@
 const express = require("express");
 const app = express();
 
+const { createClient } = require("@supabase/supabase-js");
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 app.get("/", (req, res) => {
   res.send("API Orquestrador rodando 🚀");
 });
