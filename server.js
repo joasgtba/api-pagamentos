@@ -70,14 +70,22 @@ app.post("/criar-pix", async (req, res) => {
   const transaction_id = crypto.randomUUID();
 
   // 💾 Salvar no banco
-  await supabase
-    .from("orders")
-    .update({
-      payment_method: "pix",
-      transaction_id: transaction_id,
-      status: "pagamento_pendente"
-    })
-    .eq("id", pedido.id);
+  const { error: updateError } = await supabase
+  .from("orders")
+  .update({
+    payment_method: "pix",
+    transaction_id: transaction_id,
+    status: "pagamento_pendente"
+  })
+  .eq("id", pedido.id);
+
+if (updateError) {
+  console.error("Erro ao atualizar pedido:", updateError);
+  return res.status(500).json({
+    error: "Erro ao salvar transação",
+    detalhe: updateError.message
+  });
+}
 
   // ⚠️ Aqui entra integração real com Cielo depois
   const pixFake = {
