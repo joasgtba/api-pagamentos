@@ -1,21 +1,45 @@
 const express = require("express");
 const app = express();
 
+// 🔗 Supabase
 const { createClient } = require("@supabase/supabase-js");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
 );
+
+// 🔧 Porta correta (melhor prática)
+const PORT = process.env.PORT || 3000;
+
+// 🔥 Middleware JSON (deixar no topo)
+app.use(express.json());
+
+// 🟢 Rota raiz
 app.get("/", (req, res) => {
   res.send("API Orquestrador rodando 🚀");
 });
 
+// 🟢 Health check
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
-app.use(express.json());
 
+// 🧪 TESTE BANCO (ESSA FALTAVA)
+app.get("/teste-db", async (req, res) => {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*")
+    .limit(1);
+
+  if (error) {
+    return res.status(500).json({ error });
+  }
+
+  res.json({ data });
+});
+
+// 📦 Teste de pedido
 app.post("/pedido", (req, res) => {
   const { valor, pedido_id } = req.body;
 
@@ -25,6 +49,8 @@ app.post("/pedido", (req, res) => {
     valor
   });
 });
+
+// 💳 Criar Pix (com Supabase)
 app.post("/criar-pix", async (req, res) => {
   const { pedido_id } = req.body;
 
@@ -46,15 +72,12 @@ app.post("/criar-pix", async (req, res) => {
     });
   }
 
-  // 💳 (ainda fake por enquanto)
+  // 💳 Pix fake (depois entra Cielo)
   const pixFake = {
     qrCode: "00020101021226850014br.gov.bcb.pix...",
     copiaECola: "00020101021226850014br.gov.bcb.pix...",
     status: "PENDENTE"
   };
-
-  // 🔁 (opcional agora)
-  // você pode manter o status ou mudar pra "pagamento_em_processamento"
 
   res.json({
     pedido_id: pedido.id,
@@ -63,6 +86,8 @@ app.post("/criar-pix", async (req, res) => {
     pix: pixFake
   });
 });
-app.listen(3000, () => {
-  console.log("Servidor rodando na porta 3000");
+
+// 🚀 Start servidor
+app.listen(PORT, () => {
+  console.log("Servidor rodando na porta " + PORT);
 });
