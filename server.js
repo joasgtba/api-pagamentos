@@ -176,14 +176,14 @@ app.post("/webhook/cielo", async (req, res) => {
 
     // 📝 SALVAR HISTÓRICO (ESSENCIAL 🔥)
     const { error: errorLog } = await supabase
-      .from("order_status_log")
-      .insert([
-        {
-          order_id: pedido.id,
-          status: novoStatus,
-          note: ${descricao} - TXID: ${transaction_id}
-        }
-      ]);
+  .from("order_status_log")
+  .insert([
+    {
+      order_id: pedido.id,
+      status: novoStatus,
+      note: ${descricao} - TXID: ${transaction_id}
+    }
+  ]);
 
     if (errorLog) {
       console.error("❌ Erro ao salvar log:", errorLog);
