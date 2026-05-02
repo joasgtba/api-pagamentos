@@ -41,6 +41,19 @@ app.post("/criar-pix", async (req, res) => {
     pix: pixFake
   });
 });
+
+app.get("/teste-db", async (req, res) => {
+  const { data, error } = await supabase
+    .from("pedidos")
+    .select("*")
+    .limit(1);
+
+  if (error) {
+    return res.status(500).json({ error });
+  }
+
+  res.json({ data });
+});
 app.listen(3000, () => {
   console.log("Servidor rodando na porta 3000");
 });
