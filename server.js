@@ -103,11 +103,6 @@ if (updateError) {
 });
 
 // 🔔 WEBHOOK CIELO (versão robusta)
-
-Joas Silva <joasgtba@gmail.com>
-19:57 (há 0 minuto)
-para mim
-
 app.post("/webhook/cielo", async (req, res) => {
   try {
     console.log("🔔 Webhook recebido:", req.body);
