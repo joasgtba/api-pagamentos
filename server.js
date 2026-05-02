@@ -103,13 +103,17 @@ if (updateError) {
 });
 
 // 🔔 WEBHOOK CIELO (versão robusta)
+
+Joas Silva <joasgtba@gmail.com>
+19:57 (há 0 minuto)
+para mim
+
 app.post("/webhook/cielo", async (req, res) => {
   try {
     console.log("🔔 Webhook recebido:", req.body);
 
-    // 🔐 VALIDAR HEADER DE SEGURANÇA
+    // 🔐 SEGURANÇA
     const secret = req.headers["x-webhook-secret"];
-
     if (secret !== process.env.WEBHOOK_SECRET) {
       console.warn("🚫 Webhook não autorizado");
       return res.status(401).json({ error: "Não autorizado" });
@@ -135,9 +139,9 @@ app.post("/webhook/cielo", async (req, res) => {
       return res.status(404).json({ error: "Pedido não encontrado" });
     }
 
-    // 🧠 Evitar duplicidade (idempotência básica)
+    // 🔁 Evitar duplicação
     if (pedido.status === "pago") {
-      console.log("⚠️ Pedido já está pago, ignorando duplicação");
+      console.log("⚠️ Pedido já pago");
       return res.json({ ok: true });
     }
 
@@ -164,47 +168,27 @@ app.post("/webhook/cielo", async (req, res) => {
 
     console.log("✅ Pedido atualizado:", pedido.id);
 
-    // 🧾 Salvar log
-    await supabase
+    // 🧾 SALVAR LOG (AGORA CORRETO)
+    const { error: errorLog } = await supabase
       .from("order_status_log")
       .insert([
         {
           order_id: pedido.id,
           status: novoStatus,
-          note: '${descricao} - TXID: ${transaction_id}'
+          note: `${descricao} - TXID: ${transaction_id}`
         }
       ]);
+
+    if (errorLog) {
+      console.error("❌ Erro ao salvar log:", errorLog);
+    } else {
+      console.log("🧾 Log salvo com sucesso");
+    }
 
     res.json({ received: true });
 
   } catch (err) {
     console.error("Erro no webhook:", err);
-    res.status(500).json({ error: "Erro interno" });
-  }
-});
-
-    // 📝 SALVAR HISTÓRICO (ESSENCIAL 🔥)
-    const { error: errorLog } = await supabase
-  .from("order_status_log")
-  .insert([
-    {
-      order_id: pedido.id,
-      status: novoStatus,
-      note: '${descricao} - TXID: ${transaction_id}'
-    }
-  ]);
-
-    if (errorLog) {
-      console.error("❌ Erro ao salvar log:", errorLog);
-      // ⚠️ não bloqueia o fluxo, só loga erro
-    }
-
-    console.log("✅ Pedido atualizado com sucesso:", pedido.id);
-
-    res.json({ received: true });
-
-  } catch (err) {
-    console.error("🔥 Erro no webhook:", err);
     res.status(500).json({ error: "Erro interno" });
   }
 });
