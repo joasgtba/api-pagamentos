@@ -50,11 +50,9 @@ app.post("/pedido", (req, res) => {
   });
 });
 
-// 💳 Criar Pix (com Supabase)
 app.post("/criar-pix", async (req, res) => {
   const { pedido_id } = req.body;
 
-  // 🔎 Buscar pedido real
   const { data: pedido, error } = await supabase
     .from("orders")
     .select("*")
@@ -65,14 +63,22 @@ app.post("/criar-pix", async (req, res) => {
     return res.status(404).json({ error: "Pedido não encontrado" });
   }
 
-  // 🚫 Validar status
-  if (pedido.order_status !== "aguardando_pagamento") {
+  // 🚫 Só permite pagamento se estiver pronto
+  if (pedido.status !== "aguardando_pagamento") {
     return res.status(400).json({
-      error: "Pedido não está disponível para pagamento"
+      error: "Pedido ainda não está liberado para pagamento"
     });
   }
 
-  // 💳 Pix fake (depois entra Cielo)
+  // 🔒 REGRA CRÍTICA: só usa final_total
+  if (!pedido.final_total || pedido.final_total <= 0) {
+    return res.status(400).json({
+      error: "Pedido ainda não possui valor final definido"
+    });
+  }
+
+  const valor = pedido.final_total;
+
   const pixFake = {
     qrCode: "00020101021226850014br.gov.bcb.pix...",
     copiaECola: "00020101021226850014br.gov.bcb.pix...",
@@ -81,8 +87,10 @@ app.post("/criar-pix", async (req, res) => {
 
   res.json({
     pedido_id: pedido.id,
-    valor: pedido.valor,
-    status: pedido.order_status,
+    numero: pedido.number,
+    cliente: pedido.customer_name,
+    valor,
+    status: pedido.status,
     pix: pixFake
   });
 });
