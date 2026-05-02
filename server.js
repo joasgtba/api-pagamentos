@@ -19,6 +19,22 @@ app.post("/pedido", (req, res) => {
     valor
   });
 });
+app.post("/criar-pix", async (req, res) => {
+  const { pedido_id, valor } = req.body;
+
+  // simulação (depois entra Cielo aqui)
+  const pixFake = {
+    qrCode: "00020101021226850014br.gov.bcb.pix...",
+    copiaECola: "00020101021226850014br.gov.bcb.pix...",
+    status: "PENDENTE"
+  };
+
+  res.json({
+    pedido_id,
+    valor,
+    pix: pixFake
+  });
+});
 app.listen(3000, () => {
   console.log("Servidor rodando na porta 3000");
 });
