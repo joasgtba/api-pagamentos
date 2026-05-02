@@ -44,7 +44,7 @@ app.post("/criar-pix", async (req, res) => {
 
 app.get("/teste-db", async (req, res) => {
   const { data, error } = await supabase
-    .from("pedidos")
+    .from("orders")
     .select("*")
     .limit(1);
 
