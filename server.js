@@ -102,53 +102,100 @@ if (updateError) {
   });
 });
 
-// 🔔 WEBHOOK CIELO (estrutura real)
+// 🔔 WEBHOOK CIELO (versão robusta)
 app.post("/webhook/cielo", async (req, res) => {
   try {
-    console.log("🔔 Webhook recebido:", req.body);
+    console.log("🔔 Webhook recebido:", JSON.stringify(req.body, null, 2));
 
-    // ⚠️ Exemplo genérico (Cielo real pode variar)
     const { Payment } = req.body;
 
-    if (!Payment) {
+    // ❌ Validação básica
+    if (!Payment || !Payment.PaymentId) {
       return res.status(400).json({ error: "Payload inválido" });
     }
 
     const transaction_id = Payment.PaymentId;
-    const status = Payment.Status;
+    const statusCielo = Payment.Status;
 
     // 🔎 Buscar pedido pelo transaction_id
-    const { data: pedido, error } = await supabase
+    const { data: pedido, error: errorPedido } = await supabase
       .from("orders")
       .select("*")
       .eq("transaction_id", transaction_id)
       .single();
 
-    if (error || !pedido) {
+    if (errorPedido || !pedido) {
+      console.error("❌ Pedido não encontrado:", transaction_id);
       return res.status(404).json({ error: "Pedido não encontrado" });
     }
 
-    // 🧠 Mapear status Cielo → sistema
+    // 🧠 Mapear status Cielo → sistema (ajustado ao seu enum)
     let novoStatus = pedido.status;
+    let descricao = "Atualização de pagamento";
 
-    if (status === 2) {
-      novoStatus = "pago";
-    } else if (status === 3) {
-      novoStatus = "negado";
-    } else if (status === 1) {
-      novoStatus = "pendente";
+    switch (statusCielo) {
+      case 2: // Pago
+        novoStatus = "pago";
+        descricao = "Pagamento confirmado via Cielo";
+        break;
+
+      case 3: // Negado
+        novoStatus = "cancelado"; // ⚠️ ajuste se seu enum for outro
+        descricao = "Pagamento negado pela Cielo";
+        break;
+
+      case 1: // Autorizado / pendente
+        novoStatus = "aguardando_pagamento";
+        descricao = "Pagamento pendente";
+        break;
+
+      default:
+        console.warn("⚠️ Status Cielo não mapeado:", statusCielo);
+        break;
+    }
+
+    // 🚫 Evitar atualização duplicada
+    if (pedido.status === novoStatus) {
+      console.log("ℹ️ Status já atualizado, ignorando...");
+      return res.json({ received: true });
     }
 
     // 💾 Atualizar pedido
-    await supabase
+    const { error: errorUpdate } = await supabase
       .from("orders")
-      .update({ status: novoStatus })
+      .update({
+        status: novoStatus,
+        payment_method: "pix" // ou "cielo" se quiser diferenciar
+      })
       .eq("id", pedido.id);
+
+    if (errorUpdate) {
+      console.error("❌ Erro ao atualizar pedido:", errorUpdate);
+      return res.status(500).json({ error: "Erro ao atualizar pedido" });
+    }
+
+    // 📝 SALVAR HISTÓRICO (ESSENCIAL 🔥)
+    const { error: errorLog } = await supabase
+      .from("order_status_log")
+      .insert([
+        {
+          order_id: pedido.id,
+          status: novoStatus,
+          note: ${descricao} - TXID: ${transaction_id}
+        }
+      ]);
+
+    if (errorLog) {
+      console.error("❌ Erro ao salvar log:", errorLog);
+      // ⚠️ não bloqueia o fluxo, só loga erro
+    }
+
+    console.log("✅ Pedido atualizado com sucesso:", pedido.id);
 
     res.json({ received: true });
 
   } catch (err) {
-    console.error("Erro no webhook:", err);
+    console.error("🔥 Erro no webhook:", err);
     res.status(500).json({ error: "Erro interno" });
   }
 });
