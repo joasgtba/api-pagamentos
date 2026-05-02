@@ -181,7 +181,7 @@ app.post("/webhook/cielo", async (req, res) => {
     {
       order_id: pedido.id,
       status: novoStatus,
-      note: ${descricao} - TXID: ${transaction_id}
+      note: '${descricao} - TXID: ${transaction_id}'
     }
   ]);
 
