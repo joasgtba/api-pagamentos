@@ -10,6 +10,9 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
+// 🔐 Webhook Secret seguro
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET?.trim();
+
 // 🔧 Porta
 const PORT = process.env.PORT || 3000;
 
@@ -37,82 +40,85 @@ app.get("/teste-db", async (req, res) => {
   res.json({ data });
 });
 
-// 💳 Criar PIX
+// 💳 Criar PIX (mock por enquanto)
 app.post("/criar-pix", async (req, res) => {
-  const { pedido_id } = req.body;
+  try {
+    const { pedido_id } = req.body;
 
-  const { data: pedido, error } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("id", pedido_id)
-    .single();
+    if (!pedido_id) {
+      return res.status(400).json({ error: "pedido_id é obrigatório" });
+    }
 
-  if (error || !pedido) {
-    return res.status(404).json({ error: "Pedido não encontrado" });
-  }
+    const { data: pedido, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", pedido_id)
+      .single();
 
-  if (pedido.status !== "aguardando_pagamento") {
-    return res.status(400).json({
-      error: "Pedido não liberado para pagamento"
+    if (error || !pedido) {
+      return res.status(404).json({ error: "Pedido não encontrado" });
+    }
+
+    if (pedido.status !== "aguardando_pagamento") {
+      return res.status(400).json({
+        error: "Pedido não liberado para pagamento"
+      });
+    }
+
+    if (!pedido.final_total || pedido.final_total <= 0) {
+      return res.status(400).json({
+        error: "Pedido sem valor final"
+      });
+    }
+
+    const transaction_id = crypto.randomUUID();
+
+    const { error: updateError } = await supabase
+      .from("orders")
+      .update({
+        payment_method: "pix",
+        transaction_id: transaction_id,
+        status: "pagamento_pendente"
+      })
+      .eq("id", pedido.id);
+
+    if (updateError) {
+      console.error("Erro ao atualizar pedido:", updateError.message);
+      return res.status(500).json({
+        error: "Erro ao salvar transação"
+      });
+    }
+
+    // 🔥 PIX FAKE (substituir depois pela Cielo)
+    const pixFake = {
+      qrCode: "00020101021226850014br.gov.bcb.pix...",
+      copiaECola: "00020101021226850014br.gov.bcb.pix...",
+      status: "PENDENTE"
+    };
+
+    res.json({
+      pedido_id: pedido.id,
+      transaction_id,
+      valor: pedido.final_total,
+      pix: pixFake
     });
+
+  } catch (err) {
+    console.error("Erro ao criar PIX:", err);
+    res.status(500).json({ error: "Erro interno" });
   }
-
-  if (!pedido.final_total || pedido.final_total <= 0) {
-    return res.status(400).json({
-      error: "Pedido sem valor final"
-    });
-  }
-
-  const transaction_id = crypto.randomUUID();
-
-  const { error: updateError } = await supabase
-    .from("orders")
-    .update({
-      payment_method: "pix",
-      transaction_id: transaction_id,
-      status: "pagamento_pendente"
-    })
-    .eq("id", pedido.id);
-
-  if (updateError) {
-    return res.status(500).json({
-      error: "Erro ao salvar transação",
-      detalhe: updateError.message
-    });
-  }
-
-  const pixFake = {
-    qrCode: "00020101021226850014br.gov.bcb.pix...",
-    copiaECola: "00020101021226850014br.gov.bcb.pix...",
-    status: "PENDENTE"
-  };
-
-  res.json({
-    pedido_id: pedido.id,
-    transaction_id,
-    valor: pedido.final_total,
-    pix: pixFake
-  });
 });
 
 // 🔔 WEBHOOK CIELO
 app.post("/webhook/cielo", async (req, res) => {
   try {
-    console.log("🔔 Webhook recebido:", req.body);
-
     const secret = req.headers["x-webhook-secret"];
 
-console.log("HEADER:", `[${secret}]`);
-console.log("ENV:", `[${process.env.WEBHOOK_SECRET}]`);
-
-if (
-  !secret ||
-  !process.env.WEBHOOK_SECRET ||
-  secret.trim() !== process.env.WEBHOOK_SECRET.trim()
-) {
-  console.warn("🚫 Não autorizado");
-  return res.status(401).json({ error: "Não autorizado" });
-}
+    // 🔐 Validação segura
+    if (!secret || !WEBHOOK_SECRET || secret.trim() !== WEBHOOK_SECRET) {
+      console.warn("🚫 Webhook não autorizado");
+      return res.status(401).json({ error: "Não autorizado" });
+    }
 
     const { Payment } = req.body;
 
@@ -122,6 +128,11 @@ if (
 
     const transaction_id = Payment.PaymentId;
     const status = Payment.Status;
+
+    console.log("🔔 Webhook recebido:", {
+      transaction_id,
+      status
+    });
 
     const { data: pedido, error } = await supabase
       .from("orders")
@@ -133,6 +144,7 @@ if (
       return res.status(404).json({ error: "Pedido não encontrado" });
     }
 
+    // 🧠 Evita duplicação
     if (pedido.status === "pago") {
       return res.json({ ok: true });
     }
@@ -151,11 +163,15 @@ if (
       descricao = "Pagamento pendente";
     }
 
+    // 💾 Atualizar pedido
     await supabase
       .from("orders")
       .update({ status: novoStatus })
       .eq("id", pedido.id);
 
+    console.log("✅ Pedido atualizado:", pedido.id);
+
+    // 🧾 Log de status
     const { error: errorLog } = await supabase
       .from("order_status_log")
       .insert([
@@ -167,7 +183,7 @@ if (
       ]);
 
     if (errorLog) {
-      console.error("Erro ao salvar log:", errorLog);
+      console.error("Erro ao salvar log:", errorLog.message);
     }
 
     res.json({ received: true });
