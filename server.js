@@ -102,10 +102,17 @@ app.post("/webhook/cielo", async (req, res) => {
 
     const secret = req.headers["x-webhook-secret"];
 
-    console.log("SECRET:", secret);
-return res.json({ ok: true }); {
-      return res.status(401).json({ error: "Não autorizado" });
-    }
+console.log("HEADER:", [${secret}]);
+console.log("ENV:", [${process.env.WEBHOOK_SECRET}]);
+
+if (
+  !secret ||
+  !process.env.WEBHOOK_SECRET ||
+  secret.trim() !== process.env.WEBHOOK_SECRET.trim()
+) {
+  console.warn("🚫 Não autorizado");
+  return res.status(401).json({ error: "Não autorizado" });
+}
 
     const { Payment } = req.body;
 
