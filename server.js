@@ -102,8 +102,8 @@ app.post("/webhook/cielo", async (req, res) => {
 
     const secret = req.headers["x-webhook-secret"];
 
-console.log("HEADER:", [${secret}]);
-console.log("ENV:", [${process.env.WEBHOOK_SECRET}]);
+console.log("HEADER:", '[${secret}']);
+console.log("ENV:", '[${process.env.WEBHOOK_SECRET}']);
 
 if (
   !secret ||
