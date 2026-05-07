@@ -122,14 +122,6 @@ app.post("/criar-pix", async (req, res) => {
       });
     }
 
-    await supabase.from("order_status_log").insert([
-      {
-        order_id: pedido.id,
-        status: "pagamento_pendente",
-        note: `Pix gerado via Cielo - TXID: ${pix.transaction_id}`
-      }
-    ]);
-
     res.json({
       pedido_id: pedido.id,
       transaction_id: pix.transaction_id,
