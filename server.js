@@ -3,11 +3,17 @@ const app = express();
 
 const axios = require("axios");
 const { createClient } = require("@supabase/supabase-js");
+const WebSocket = require("ws");
 
 // 🔌 Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
+  process.env.SUPABASE_KEY,
+  {
+    realtime: {
+      transport: WebSocket
+    }
+  }
 );
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET?.trim();
