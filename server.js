@@ -163,6 +163,165 @@ app.post("/criar-pix", async (req, res) => {
   }
 });
 
+// 💳 Criar pagamento com cartão
+app.post("/criar-cartao", async (req, res) => {
+  try {
+    const {
+      pedido_id,
+      card,
+      installments = 1
+    } = req.body;
+
+    if (!pedido_id) {
+      return res.status(400).json({
+        error: "pedido_id é obrigatório"
+      });
+    }
+
+    if (!card) {
+      return res.status(400).json({
+        error: "Dados do cartão são obrigatórios"
+      });
+    }
+
+    const { data: pedido, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", pedido_id)
+      .single();
+
+    if (error || !pedido) {
+      return res.status(404).json({
+        error: "Pedido não encontrado"
+      });
+    }
+
+    if (pedido.status !== "aguardando_pagamento") {
+      return res.status(400).json({
+        error: "Pedido não liberado para pagamento"
+      });
+    }
+
+    const valorCentavos = Math.round(
+      Number(pedido.final_total) * 100
+    );
+
+    // 🔥 Enviar para Cielo
+    const response = await axios.post(
+      `${CIELO_BASE_URL}/1/sales`,
+      {
+        MerchantOrderId: pedido.id,
+
+        Customer: {
+          Name:
+            pedido.customer_name ||
+            card.holder ||
+            "Cliente"
+        },
+
+        Payment: {
+          Type: "CreditCard",
+          Amount: valorCentavos,
+          Installments: installments,
+          SoftDescriptor: "FRANGOIANO",
+
+          CreditCard: {
+            CardNumber: card.number,
+            Holder: card.holder,
+            ExpirationDate: card.expiration,
+            SecurityCode: card.cvv,
+            Brand: card.brand
+          }
+        }
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          MerchantId: process.env.CIELO_MERCHANT_ID,
+          MerchantKey: process.env.CIELO_MERCHANT_KEY
+        }
+      }
+    );
+
+    const payment = response.data.Payment;
+
+    let novoStatus = "pagamento_pendente";
+
+    // ✅ Pago
+    if (payment.Status === 2) {
+      novoStatus = "pago";
+    }
+
+    // ❌ Negado
+    if (payment.Status === 3) {
+      novoStatus = "cancelado";
+    }
+
+    // 💾 Atualizar pedido
+    const { error: updateError } = await supabase
+      .from("orders")
+      .update({
+        payment_method: "cartao",
+        transaction_id: payment.PaymentId,
+        status: novoStatus
+      })
+      .eq("id", pedido.id);
+
+    if (updateError) {
+      return res.status(500).json({
+        error: "Erro ao atualizar pedido"
+      });
+    }
+
+    // 🧾 Log
+    await supabase
+      .from("order_status_log")
+      .insert([
+        {
+          order_id: pedido.id,
+          status: novoStatus,
+          note:
+            payment.Status === 2
+              ? "Pagamento cartão aprovado via Cielo"
+              : "Pagamento cartão processado via Cielo"
+        }
+      ]);
+
+    res.json({
+      success: true,
+
+      pedido_id: pedido.id,
+
+      transaction_id: payment.PaymentId,
+
+      status: payment.Status,
+
+      payment: {
+        amount: pedido.final_total,
+        installments,
+        brand: card.brand
+      },
+
+      cielo: {
+        tid: payment.Tid,
+        proofOfSale: payment.ProofOfSale,
+        authorizationCode: payment.AuthorizationCode
+      }
+    });
+
+  } catch (err) {
+    console.error(
+      "Erro ao criar pagamento cartão:",
+      err.response?.data || err.message
+    );
+
+    res.status(500).json({
+      error: "Erro ao processar cartão",
+      detalhe: err.response?.data || err.message
+    });
+  }
+});
+
 // 🔔 WEBHOOK CIELO
 app.post("/webhook/cielo", async (req, res) => {
   try {
