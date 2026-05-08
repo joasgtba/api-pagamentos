@@ -238,6 +238,7 @@ app.post("/criar-cartao", async (req, res) => {
           Type: "CreditCard",
           Amount: valorCentavos,
           Installments: installments,
+          Capture: true,
           SoftDescriptor: "FRANGOIANO",
 
           CreditCard: {
