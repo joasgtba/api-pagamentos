@@ -22,6 +22,8 @@ const PORT = process.env.PORT || 3000;
 
 const CIELO_BASE_URL =
   process.env.CIELO_BASE_URL || "https://apisandbox.cieloecommerce.cielo.com.br";
+const CIELO_QUERY_URL =
+  process.env.CIELO_QUERY_URL || "https://apiquerysandbox.cieloecommerce.cielo.com.br";
 
 // Middlewares
 app.use(express.json());
@@ -364,7 +366,7 @@ app.get("/consultar-cartao/:pedido_id", async (req, res) => {
 
     // 🔥 Consulta Cielo
     const response = await axios.get(
-      `${CIELO_BASE_URL}/1/sales/${pedido.transaction_id}`,
+      `${CIELO_QUERY_URL}/1/sales/${pedido.transaction_id}`,
       {
         headers: {
           MerchantId: process.env.CIELO_MERCHANT_ID,
