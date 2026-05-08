@@ -26,13 +26,26 @@ const CIELO_BASE_URL =
 // Middlewares
 app.use(express.json());
 
+const allowedOrigins = [
+  "https://app.frangoiano.com",
+  "https://frangoiano.com",
+  "https://www.frangoiano.com",
+  "http://localhost:5173"
+];
+
 app.use(cors({
-  origin: [
-    "https://app.frangoiano.com",
-    "https://frangoiano.com",
-    "https://www.frangoiano.com",
-    "http://localhost:5173"
-  ],
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith(".lovable.app")
+    ) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Origem não permitida pelo CORS: " + origin));
+  },
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-webhook-secret"]
 }));
