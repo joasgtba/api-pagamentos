@@ -2,6 +2,7 @@ const express = require("express");
 const app = express();
 
 const axios = require("axios");
+const cors = require("cors");
 const { createClient } = require("@supabase/supabase-js");
 const WebSocket = require("ws");
 
@@ -22,7 +23,21 @@ const PORT = process.env.PORT || 3000;
 const CIELO_BASE_URL =
   process.env.CIELO_BASE_URL || "https://apisandbox.cieloecommerce.cielo.com.br";
 
+// Middlewares
 app.use(express.json());
+
+app.use(cors({
+  origin: [
+    "https://app.frangoiano.com",
+    "https://frangoiano.com",
+    "https://www.frangoiano.com",
+    "http://localhost:5173"
+  ],
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-webhook-secret"]
+}));
+
+app.options("*", cors());
 
 app.get("/", (req, res) => {
   res.send("API Orquestrador rodando 🚀");
