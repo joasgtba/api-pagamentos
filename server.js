@@ -268,10 +268,12 @@ app.post("/criar-cartao", async (req, res) => {
       .eq("id", pedido.id);
 
     if (updateError) {
-      return res.status(500).json({
-        error: "Erro ao atualizar pedido"
-      });
-    }
+  console.error("Erro ao atualizar pedido cartão:", updateError);
+  return res.status(500).json({
+    error: "Erro ao atualizar pedido",
+    detalhe: updateError.message
+  });
+}
 
     // 🧾 Log
     await supabase
