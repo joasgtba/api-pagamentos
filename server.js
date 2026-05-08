@@ -324,6 +324,96 @@ app.post("/criar-cartao", async (req, res) => {
   }
 });
 
+// 🔍 Consultar status cartão
+app.get("/consultar-cartao/:pedido_id", async (req, res) => {
+
+  try {
+
+    const { pedido_id } = req.params;
+
+    const { data: pedido, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", pedido_id)
+      .single();
+
+    if (error || !pedido) {
+      return res.status(404).json({
+        error: "Pedido não encontrado"
+      });
+    }
+
+    if (!pedido.transaction_id) {
+      return res.status(400).json({
+        error: "Pedido sem transaction_id"
+      });
+    }
+
+    // 🔥 Consulta Cielo
+    const response = await axios.get(
+      `${CIELO_BASE_URL}/1/sales/${pedido.transaction_id}`,
+      {
+        headers: {
+          MerchantId: process.env.CIELO_MERCHANT_ID,
+          MerchantKey: process.env.CIELO_MERCHANT_KEY
+        }
+      }
+    );
+
+    const payment = response.data.Payment;
+
+    let novoStatus = pedido.status;
+
+    switch (payment.Status) {
+
+      case 1:
+        novoStatus = "processando_pagamento";
+        break;
+
+      case 2:
+        novoStatus = "pago";
+        break;
+
+      case 3:
+        novoStatus = "cancelado";
+        break;
+
+      case 10:
+      case 11:
+      case 12:
+      case 13:
+        novoStatus = "cancelado";
+        break;
+    }
+
+    // Atualiza pedido
+    await supabase
+      .from("orders")
+      .update({
+        status: novoStatus
+      })
+      .eq("id", pedido.id);
+
+    res.json({
+      success: true,
+      payment_status: payment.Status,
+      order_status: novoStatus,
+      payment
+    });
+
+  } catch (err) {
+
+    console.error(
+      "Erro consultar cartão:",
+      err.response?.data || err.message
+    );
+
+    res.status(500).json({
+      error: "Erro consultar cartão"
+    });
+  }
+});
+
 // 🔔 WEBHOOK CIELO
 app.post("/webhook/cielo", async (req, res) => {
   try {
