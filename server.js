@@ -165,96 +165,109 @@ app.post("/criar-pix", validarClienteApi, async (req, res) => {
     }
 
     // 🔒 Idempotência PIX + expiração do Pix
-if (
-  pedido.transaction_id &&
-  ["pagamento_pendente", "processando_pagamento"].includes(pedido.status)
-) {
+    if (
+      pedido.transaction_id &&
+      ["pagamento_pendente", "processando_pagamento"].includes(pedido.status)
+    ) {
+      const PIX_EXPIRATION_MINUTES =
+        Number(process.env.PIX_EXPIRATION_MINUTES || 30);
 
-  const PIX_EXPIRATION_MINUTES =
-  Number(process.env.PIX_EXPIRATION_MINUTES || 30);
+      const agora = new Date();
 
-  const agora = new Date();
-  const geradoEm = pedido.pix_generated_at
-    ? new Date(pedido.pix_generated_at)
-    : null;
+      const geradoEm = pedido.pix_generated_at
+        ? new Date(pedido.pix_generated_at)
+        : null;
 
-  const expirado =
-    !geradoEm ||
-    ((agora - geradoEm) / 1000 / 60) > PIX_EXPIRATION_MINUTES;
+      const expirado =
+        !geradoEm ||
+        ((agora - geradoEm) / 1000 / 60) > PIX_EXPIRATION_MINUTES;
 
-  // ✅ PIX ainda válido → retorna o mesmo
-  if (
-    !expirado &&
-    pedido.pix_qr_code &&
-    pedido.pix_copia_cola
-  ) {
-    return res.status(200).json({
-      pedido_id: pedido.id,
-      transaction_id: pedido.transaction_id,
-      valor: pedido.final_total,
-      existing: true,
-      expires_in_minutes: PIX_EXPIRATION_MINUTES,
-      pix: {
-        qrCode: pedido.pix_qr_code,
-        copiaECola: pedido.pix_copia_cola,
-        status: "PENDENTE"
+      // ✅ PIX ainda válido → retorna o mesmo
+      if (
+        !expirado &&
+        pedido.pix_qr_code &&
+        pedido.pix_copia_cola
+      ) {
+        return res.status(200).json({
+          pedido_id: pedido.id,
+          transaction_id: pedido.transaction_id,
+          valor: pedido.final_total,
+          existing: true,
+          expires_in_minutes: PIX_EXPIRATION_MINUTES,
+          pix: {
+            qrCode: pedido.pix_qr_code,
+            copiaECola: pedido.pix_copia_cola,
+            status: "PENDENTE"
+          }
+        });
       }
-    });
-  }
 
-  // ⏰ PIX expirado
-if (expirado && !force_new) {
-  return res.status(200).json({
-    pedido_id: pedido.id,
-    transaction_id: pedido.transaction_id,
-    valor: pedido.final_total,
-    pix_expired: true,
-    message: "Pix expirado. Gere um novo código para continuar o pagamento."
-  });
-}
+      // ⏰ PIX expirado → apenas informa
+      if (expirado && !force_new) {
+        return res.status(200).json({
+          pedido_id: pedido.id,
+          transaction_id: pedido.transaction_id,
+          valor: pedido.final_total,
+          pix_expired: true,
+          message: "Pix expirado. Gere um novo código para continuar o pagamento."
+        });
+      }
 
-// 🔄 Usuário pediu novo Pix
-if (expirado && force_new) {
-  console.log("PIX expirado. Gerando novo Pix:", pedido.id);
+      // 🔄 Usuário pediu novo Pix
+      if (expirado && force_new) {
+        console.log("PIX expirado. Gerando novo Pix:", pedido.id);
 
-  await supabase
-    .from("orders")
-    .update({
-      transaction_id: null,
-      payment_method: null,
-      pix_qr_code: null,
-      pix_copia_cola: null,
-      pix_generated_at: null,
-      status: "aguardando_pagamento"
-    })
-    .eq("id", pedido.id);
+        await supabase
+          .from("orders")
+          .update({
+            transaction_id: null,
+            payment_method: null,
+            pix_qr_code: null,
+            pix_copia_cola: null,
+            pix_generated_at: null,
+            status: "aguardando_pagamento"
+          })
+          .eq("id", pedido.id);
 
-  pedido.transaction_id = null;
-  pedido.status = "aguardando_pagamento";
-}
+        // atualiza objeto local
+        pedido.transaction_id = null;
+        pedido.payment_method = null;
+        pedido.pix_qr_code = null;
+        pedido.pix_copia_cola = null;
+        pedido.pix_generated_at = null;
+        pedido.status = "aguardando_pagamento";
 
-  // atualiza objeto local
-  pedido.transaction_id = null;
-}
+        // NÃO dar return aqui.
+        // O fluxo continua e gera um novo Pix abaixo.
+      }
+    }
+
+    if (pedido.status !== "aguardando_pagamento") {
+      return res.status(400).json({
+        error: "Pedido não liberado para pagamento"
+      });
+    }
+
     if (!pedido.final_total || pedido.final_total <= 0) {
       return res.status(400).json({
         error: "Pedido sem valor final"
       });
     }
 
+    // 🔥 Aqui gera novo Pix na Cielo
     const pix = await gerarPixCielo({ pedido });
 
     const { error: updateError } = await supabase
-  .from("orders")
-  .update({
-    payment_method: "pix",
-    transaction_id: pix.transaction_id,
-    status: "pagamento_pendente",
-    pix_qr_code: pix.qrCode,
-    pix_copia_cola: pix.copiaECola,
-    pix_generated_at: new Date().toISOString()
-  })
-  .eq("id", pedido.id);
+      .from("orders")
+      .update({
+        payment_method: "pix",
+        transaction_id: pix.transaction_id,
+        status: "pagamento_pendente",
+        pix_qr_code: pix.qrCode,
+        pix_copia_cola: pix.copiaECola,
+        pix_generated_at: new Date().toISOString()
+      })
+      .eq("id", pedido.id);
 
     if (updateError) {
       console.error("Erro ao atualizar pedido:", updateError.message);
@@ -267,6 +280,7 @@ if (expirado && force_new) {
       pedido_id: pedido.id,
       transaction_id: pix.transaction_id,
       valor: pedido.final_total,
+      existing: false,
       pix: {
         qrCode: pix.qrCode,
         copiaECola: pix.copiaECola,
