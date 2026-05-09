@@ -148,7 +148,7 @@ async function gerarPixCielo({ pedido }) {
 // 💳 Criar PIX real
 app.post("/criar-pix", validarClienteApi, async (req, res) => {
   try {
-    const { pedido_id } = req.body;
+    const { pedido_id, force_new = false } = req.body;
 
     if (!pedido_id) {
       return res.status(400).json({ error: "pedido_id é obrigatório" });
@@ -202,8 +202,20 @@ if (
     });
   }
 
-  // ⏰ PIX expirado → limpa pagamento antigo
-  console.log("PIX expirado. Limpando cobrança antiga:", pedido.id);
+  // ⏰ PIX expirado
+if (expirado && !force_new) {
+  return res.status(200).json({
+    pedido_id: pedido.id,
+    transaction_id: pedido.transaction_id,
+    valor: pedido.final_total,
+    pix_expired: true,
+    message: "Pix expirado. Gere um novo código para continuar o pagamento."
+  });
+}
+
+// 🔄 Usuário pediu novo Pix
+if (expirado && force_new) {
+  console.log("PIX expirado. Gerando novo Pix:", pedido.id);
 
   await supabase
     .from("orders")
@@ -216,6 +228,10 @@ if (
       status: "aguardando_pagamento"
     })
     .eq("id", pedido.id);
+
+  pedido.transaction_id = null;
+  pedido.status = "aguardando_pagamento";
+}
 
   // atualiza objeto local
   pedido.transaction_id = null;
