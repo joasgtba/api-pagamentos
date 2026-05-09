@@ -164,17 +164,35 @@ app.post("/criar-pix", validarClienteApi, async (req, res) => {
       return res.status(404).json({ error: "Pedido não encontrado" });
     }
 
-    // 🔒 Idempotência PIX — retorna Pix já existente
+    // 🔒 Idempotência PIX + expiração do Pix
 if (
   pedido.transaction_id &&
   ["pagamento_pendente", "processando_pagamento"].includes(pedido.status)
 ) {
-  if (pedido.pix_qr_code && pedido.pix_copia_cola) {
+
+  const PIX_EXPIRATION_MINUTES = 1;
+
+  const agora = new Date();
+  const geradoEm = pedido.pix_generated_at
+    ? new Date(pedido.pix_generated_at)
+    : null;
+
+  const expirado =
+    !geradoEm ||
+    ((agora - geradoEm) / 1000 / 60) > PIX_EXPIRATION_MINUTES;
+
+  // ✅ PIX ainda válido → retorna o mesmo
+  if (
+    !expirado &&
+    pedido.pix_qr_code &&
+    pedido.pix_copia_cola
+  ) {
     return res.status(200).json({
       pedido_id: pedido.id,
       transaction_id: pedido.transaction_id,
       valor: pedido.final_total,
       existing: true,
+      expires_in_minutes: PIX_EXPIRATION_MINUTES,
       pix: {
         qrCode: pedido.pix_qr_code,
         copiaECola: pedido.pix_copia_cola,
@@ -183,10 +201,23 @@ if (
     });
   }
 
-  return res.status(409).json({
-    error: "Pagamento já iniciado, mas Pix não está disponível. Gere um novo pedido ou libere este pedido para novo pagamento.",
-    status: pedido.status
-  });
+  // ⏰ PIX expirado → limpa pagamento antigo
+  console.log("PIX expirado. Limpando cobrança antiga:", pedido.id);
+
+  await supabase
+    .from("orders")
+    .update({
+      transaction_id: null,
+      payment_method: null,
+      pix_qr_code: null,
+      pix_copia_cola: null,
+      pix_generated_at: null,
+      status: "aguardando_pagamento"
+    })
+    .eq("id", pedido.id);
+
+  // atualiza objeto local
+  pedido.transaction_id = null;
 }
     if (!pedido.final_total || pedido.final_total <= 0) {
       return res.status(400).json({
