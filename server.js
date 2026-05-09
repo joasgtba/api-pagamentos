@@ -170,7 +170,8 @@ if (
   ["pagamento_pendente", "processando_pagamento"].includes(pedido.status)
 ) {
 
-  const PIX_EXPIRATION_MINUTES = 1;
+  const PIX_EXPIRATION_MINUTES =
+  Number(process.env.PIX_EXPIRATION_MINUTES || 30);
 
   const agora = new Date();
   const geradoEm = pedido.pix_generated_at
