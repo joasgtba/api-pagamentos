@@ -1,5 +1,6 @@
 const express = require("express");
 const app = express();
+app.set("trust proxy", 1);
 
 const axios = require("axios");
 const cors = require("cors");
@@ -196,15 +197,16 @@ if (pedido.status === "pago") {
     const pix = await gerarPixCielo({ pedido });
 
     const { error: updateError } = await supabase
-      .update({
-  payment_method: "pix",
-  transaction_id: pix.transaction_id,
-  status: "pagamento_pendente",
-  pix_qr_code: pix.qrCode,
-  pix_copia_cola: pix.copiaECola,
-  pix_generated_at: new Date().toISOString()
-})
-      .eq("id", pedido.id);
+  .from("orders")
+  .update({
+    payment_method: "pix",
+    transaction_id: pix.transaction_id,
+    status: "pagamento_pendente",
+    pix_qr_code: pix.qrCode,
+    pix_copia_cola: pix.copiaECola,
+    pix_generated_at: new Date().toISOString()
+  })
+  .eq("id", pedido.id);
 
     if (updateError) {
       console.error("Erro ao atualizar pedido:", updateError.message);
