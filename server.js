@@ -3,6 +3,7 @@ const app = express();
 
 const axios = require("axios");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
 const { createClient } = require("@supabase/supabase-js");
 const WebSocket = require("ws");
 
@@ -74,6 +75,19 @@ app.use(cors({
 }));
 
 app.options("*", cors());
+
+// 🛡️ Rate limit geral da API
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: 100, // 100 requisições por IP por minuto
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Muitas requisições. Tente novamente em instantes."
+  }
+});
+
+app.use(limiter);
 
 app.get("/", (req, res) => {
   res.send("API Orquestrador rodando 🚀");
