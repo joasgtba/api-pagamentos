@@ -163,11 +163,27 @@ app.post("/criar-pix", validarClienteApi, async (req, res) => {
       return res.status(404).json({ error: "Pedido não encontrado" });
     }
 
-    if (pedido.status !== "aguardando_pagamento") {
-      return res.status(400).json({
-        error: "Pedido não liberado para pagamento"
-      });
-    }
+    // 🔒 Idempotência PIX
+if (
+  pedido.transaction_id &&
+  [
+    "pagamento_pendente",
+    "processando_pagamento",
+    "pago"
+  ].includes(pedido.status)
+) {
+  return res.status(409).json({
+    error: "Pagamento já iniciado para este pedido",
+    status: pedido.status,
+    transaction_id: pedido.transaction_id
+  });
+}
+
+if (pedido.status !== "aguardando_pagamento") {
+  return res.status(400).json({
+    error: "Pedido não liberado para pagamento"
+  });
+}
 
     if (!pedido.final_total || pedido.final_total <= 0) {
       return res.status(400).json({
@@ -246,11 +262,27 @@ app.post("/criar-cartao", validarClienteApi, async (req, res) => {
       });
     }
 
-    if (pedido.status !== "aguardando_pagamento") {
-      return res.status(400).json({
-        error: "Pedido não liberado para pagamento"
-      });
-    }
+    // 🔒 Idempotência cartão
+if (
+  pedido.transaction_id &&
+  [
+    "pagamento_pendente",
+    "processando_pagamento",
+    "pago"
+  ].includes(pedido.status)
+) {
+  return res.status(409).json({
+    error: "Pagamento já iniciado para este pedido",
+    status: pedido.status,
+    transaction_id: pedido.transaction_id
+  });
+}
+
+if (pedido.status !== "aguardando_pagamento") {
+  return res.status(400).json({
+    error: "Pedido não liberado para pagamento"
+  });
+}
 
     if (!pedido.final_total || pedido.final_total <= 0) {
       return res.status(400).json({
