@@ -18,12 +18,28 @@ const supabase = createClient(
 );
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET?.trim();
+const API_CLIENT_SECRET = process.env.API_CLIENT_SECRET?.trim();
+
 const PORT = process.env.PORT || 3000;
 
 const CIELO_BASE_URL =
   process.env.CIELO_BASE_URL || "https://apisandbox.cieloecommerce.cielo.com.br";
+
 const CIELO_QUERY_URL =
   process.env.CIELO_QUERY_URL || "https://apiquerysandbox.cieloecommerce.cielo.com.br";
+
+// 🔐 Validação do cliente da API
+function validarClienteApi(req, res, next) {
+  const secret = req.headers["x-api-client-secret"];
+
+  if (!secret || !API_CLIENT_SECRET || secret.trim() !== API_CLIENT_SECRET) {
+    return res.status(401).json({
+      error: "Cliente não autorizado"
+    });
+  }
+
+  next();
+}
 
 // Middlewares
 app.use(express.json());
@@ -49,7 +65,12 @@ app.use(cors({
     return callback(new Error("Origem não permitida pelo CORS: " + origin));
   },
   methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-webhook-secret"]
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "x-webhook-secret",
+    "x-api-client-secret"
+  ]
 }));
 
 app.options("*", cors());
@@ -110,7 +131,7 @@ async function gerarPixCielo({ pedido }) {
 }
 
 // 💳 Criar PIX real
-app.post("/criar-pix", async (req, res) => {
+app.post("/criar-pix", validarClienteApi, async (req, res) => {
   try {
     const { pedido_id } = req.body;
 
@@ -179,7 +200,7 @@ app.post("/criar-pix", async (req, res) => {
 });
 
 // 💳 Criar pagamento com cartão
-app.post("/criar-cartao", async (req, res) => {
+app.post("/criar-cartao", validarClienteApi, async (req, res) => {
   try {
     const {
       pedido_id,
@@ -217,11 +238,14 @@ app.post("/criar-cartao", async (req, res) => {
       });
     }
 
-    const valorCentavos = Math.round(
-      Number(pedido.final_total) * 100
-    );
+    if (!pedido.final_total || pedido.final_total <= 0) {
+      return res.status(400).json({
+        error: "Pedido sem valor final"
+      });
+    }
 
-    // 🔥 Enviar para Cielo
+    const valorCentavos = Math.round(Number(pedido.final_total) * 100);
+
     const response = await axios.post(
       `${CIELO_BASE_URL}/1/sales`,
       {
@@ -263,17 +287,14 @@ app.post("/criar-cartao", async (req, res) => {
 
     let novoStatus = "pagamento_pendente";
 
-    // ✅ Pago
     if (payment.Status === 2) {
       novoStatus = "pago";
     }
 
-    // ❌ Negado
     if (payment.Status === 3) {
       novoStatus = "cancelado";
     }
 
-    // 💾 Atualizar pedido
     const { error: updateError } = await supabase
       .from("orders")
       .update({
@@ -284,14 +305,13 @@ app.post("/criar-cartao", async (req, res) => {
       .eq("id", pedido.id);
 
     if (updateError) {
-  console.error("Erro ao atualizar pedido cartão:", updateError);
-  return res.status(500).json({
-    error: "Erro ao atualizar pedido",
-    detalhe: updateError.message
-  });
-}
+      console.error("Erro ao atualizar pedido cartão:", updateError);
+      return res.status(500).json({
+        error: "Erro ao atualizar pedido",
+        detalhe: updateError.message
+      });
+    }
 
-    // 🧾 Log
     await supabase
       .from("order_status_log")
       .insert([
@@ -307,19 +327,14 @@ app.post("/criar-cartao", async (req, res) => {
 
     res.json({
       success: true,
-
       pedido_id: pedido.id,
-
       transaction_id: payment.PaymentId,
-
       status: payment.Status,
-
       payment: {
         amount: pedido.final_total,
         installments,
         brand: card.brand
       },
-
       cielo: {
         tid: payment.Tid,
         proofOfSale: payment.ProofOfSale,
@@ -341,10 +356,8 @@ app.post("/criar-cartao", async (req, res) => {
 });
 
 // 🔍 Consultar status cartão
-app.get("/consultar-cartao/:pedido_id", async (req, res) => {
-
+app.get("/consultar-cartao/:pedido_id", validarClienteApi, async (req, res) => {
   try {
-
     const { pedido_id } = req.params;
 
     const { data: pedido, error } = await supabase
@@ -365,7 +378,6 @@ app.get("/consultar-cartao/:pedido_id", async (req, res) => {
       });
     }
 
-    // 🔥 Consulta Cielo
     const response = await axios.get(
       `${CIELO_QUERY_URL}/1/sales/${pedido.transaction_id}`,
       {
@@ -381,7 +393,6 @@ app.get("/consultar-cartao/:pedido_id", async (req, res) => {
     let novoStatus = pedido.status;
 
     switch (payment.Status) {
-
       case 1:
         novoStatus = "processando_pagamento";
         break;
@@ -402,7 +413,6 @@ app.get("/consultar-cartao/:pedido_id", async (req, res) => {
         break;
     }
 
-    // Atualiza pedido
     await supabase
       .from("orders")
       .update({
@@ -418,7 +428,6 @@ app.get("/consultar-cartao/:pedido_id", async (req, res) => {
     });
 
   } catch (err) {
-
     console.error(
       "Erro consultar cartão:",
       err.response?.data || err.message
