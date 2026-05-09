@@ -169,22 +169,22 @@ if (
   pedido.transaction_id &&
   ["pagamento_pendente", "processando_pagamento"].includes(pedido.status)
 ) {
-  return res.status(200).json({
-    pedido_id: pedido.id,
-    transaction_id: pedido.transaction_id,
-    valor: pedido.final_total,
-    existing: true,
-    pix: {
-      qrCode: pedido.pix_qr_code,
-      copiaECola: pedido.pix_copia_cola,
-      status: "PENDENTE"
-    }
-  });
-}
+  if (pedido.pix_qr_code && pedido.pix_copia_cola) {
+    return res.status(200).json({
+      pedido_id: pedido.id,
+      transaction_id: pedido.transaction_id,
+      valor: pedido.final_total,
+      existing: true,
+      pix: {
+        qrCode: pedido.pix_qr_code,
+        copiaECola: pedido.pix_copia_cola,
+        status: "PENDENTE"
+      }
+    });
+  }
 
-if (pedido.status === "pago") {
   return res.status(409).json({
-    error: "Pedido já está pago",
+    error: "Pagamento já iniciado, mas Pix não está disponível. Gere um novo pedido ou libere este pedido para novo pagamento.",
     status: pedido.status
   });
 }
