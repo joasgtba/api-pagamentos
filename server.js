@@ -163,28 +163,30 @@ app.post("/criar-pix", validarClienteApi, async (req, res) => {
       return res.status(404).json({ error: "Pedido não encontrado" });
     }
 
-    // 🔒 Idempotência PIX
+    // 🔒 Idempotência PIX — retorna Pix já existente
 if (
   pedido.transaction_id &&
-  [
-    "pagamento_pendente",
-    "processando_pagamento",
-    "pago"
-  ].includes(pedido.status)
+  ["pagamento_pendente", "processando_pagamento"].includes(pedido.status)
 ) {
+  return res.status(200).json({
+    pedido_id: pedido.id,
+    transaction_id: pedido.transaction_id,
+    valor: pedido.final_total,
+    existing: true,
+    pix: {
+      qrCode: pedido.pix_qr_code,
+      copiaECola: pedido.pix_copia_cola,
+      status: "PENDENTE"
+    }
+  });
+}
+
+if (pedido.status === "pago") {
   return res.status(409).json({
-    error: "Pagamento já iniciado para este pedido",
-    status: pedido.status,
-    transaction_id: pedido.transaction_id
+    error: "Pedido já está pago",
+    status: pedido.status
   });
 }
-
-if (pedido.status !== "aguardando_pagamento") {
-  return res.status(400).json({
-    error: "Pedido não liberado para pagamento"
-  });
-}
-
     if (!pedido.final_total || pedido.final_total <= 0) {
       return res.status(400).json({
         error: "Pedido sem valor final"
@@ -194,12 +196,14 @@ if (pedido.status !== "aguardando_pagamento") {
     const pix = await gerarPixCielo({ pedido });
 
     const { error: updateError } = await supabase
-      .from("orders")
       .update({
-        payment_method: "pix",
-        transaction_id: pix.transaction_id,
-        status: "pagamento_pendente"
-      })
+  payment_method: "pix",
+  transaction_id: pix.transaction_id,
+  status: "pagamento_pendente",
+  pix_qr_code: pix.qrCode,
+  pix_copia_cola: pix.copiaECola,
+  pix_generated_at: new Date().toISOString()
+})
       .eq("id", pedido.id);
 
     if (updateError) {
